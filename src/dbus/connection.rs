@@ -2,7 +2,7 @@ use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use zbus::{connection::Builder, interface, Connection, Result};
 
-use crate::grub2::GrubFile;
+use crate::{config::ConfigArgs, grub2::GrubFile};
 
 pub struct BootloaderConfig {}
 
@@ -28,11 +28,17 @@ impl BootloaderConfig {
     }
 }
 
-pub async fn create_connection() -> Result<Connection> {
+pub async fn create_connection(args: &ConfigArgs) -> Result<Connection> {
     let config = BootloaderConfig {};
 
-    let connection = Builder::session()?
-        .name("org.opensuse.bootloader.Config")?
+    let connection = if args.session {
+        Builder::session()?
+    } else {
+        Builder::system()?
+    };
+
+    let connection = connection
+        .name("org.opensuse.bootloader")?
         .serve_at("/org/opensuse/bootloader", config)?
         .build()
         .await?;
