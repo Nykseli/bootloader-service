@@ -5,7 +5,7 @@ use serde_json::Value;
 use zbus::{connection::Builder, interface, object_server::SignalEmitter, Connection, Result};
 
 use crate::{
-    config::ConfigArgs,
+    config::{ConfigArgs, GRUB_FILE_PATH},
     grub2::{GrubBootEntries, GrubFile, GrubLine},
 };
 
@@ -20,7 +20,7 @@ struct ConfigData {
 #[interface(name = "org.opensuse.bootloader.Config")]
 impl BootloaderConfig {
     async fn get_config(&self) -> String {
-        let grub = GrubFile::new("/etc/default/grub");
+        let grub = GrubFile::new(GRUB_FILE_PATH);
 
         let value_map = serde_json::to_value(grub.keyvalues()).unwrap();
         let value_list = serde_json::to_value(grub.lines()).unwrap();
@@ -43,7 +43,7 @@ impl BootloaderConfig {
         //       and return an ID that the client can use to poll information
 
         // WARN: this triggers FileChanged signal
-        let mut grub = File::create("/etc/default/grub").unwrap();
+        let mut grub = File::create(GRUB_FILE_PATH).unwrap();
         write!(grub, "{}", file).unwrap();
 
         let mkconfig_child = Command::new("grub2-mkconfig")

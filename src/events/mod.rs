@@ -1,13 +1,13 @@
 use inotify::{EventMask, Inotify, WatchMask};
 use zbus::Connection;
 
-use crate::dbus::connection::BootloaderConfigSignals;
+use crate::{config::GRUB_ROOT_PATH, dbus::connection::BootloaderConfigSignals};
 
 pub async fn listen_files(connection: &Connection) -> zbus::Result<()> {
     let mut inotify = Inotify::init().expect("Failed to initialize inotify");
     inotify
         .watches()
-        .add("/etc/default/", WatchMask::MODIFY)
+        .add(GRUB_ROOT_PATH, WatchMask::MODIFY)
         .expect("Failed to watch /etc/default/grub");
 
     loop {
