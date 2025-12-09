@@ -2,6 +2,11 @@ use regex::Regex;
 use serde::{Deserialize, Serialize};
 use std::{collections::HashMap, fs::read_to_string, io, path::Path};
 
+use crate::{
+    dctx,
+    errors::{DError, DRes, DResult},
+};
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct KeyValue {
     line: usize,
@@ -13,7 +18,7 @@ pub struct KeyValue {
 }
 
 impl KeyValue {
-    fn new(line: usize, original: &str) -> Self {
+    fn new(line: usize, original: &str) -> DResult<Self> {
         let mut kv = Self {
             line,
             changed: false,
@@ -22,18 +27,25 @@ impl KeyValue {
             original: original.into(),
         };
 
-        kv.parse();
-        kv
+        kv.parse()?;
+        Ok(kv)
     }
 
-    fn parse(&mut self) {
-        // assuming this is always valid
-        // TODO: error out if the parse fails
+    fn parse(&mut self) -> DResult<()> {
         // TODO: save the type of quotes so they can be returned to orignal
         let trimmed = self.original.trim();
-        let split = trimmed.split_once('=').unwrap();
+        let split = if let Some(split) = trimmed.split_once('=') {
+            split
+        } else {
+            return DError::grub_parse_error(
+                dctx!(),
+                format!("Expected '=' on line: {}", self.line + 1),
+            );
+        };
         self.key = split.0.into();
         self.value = split.1.replace('\'', "").replace('"', "").into();
+
+        Ok(())
     }
 }
 
@@ -89,7 +101,7 @@ pub struct GrubFile {
 }
 
 impl GrubFile {
-    pub fn new(file: &str) -> Self {
+    pub fn new(file: &str) -> DResult<Self> {
         let mut lines = Vec::new();
         let mut keyvals = HashMap::new();
 
@@ -102,16 +114,17 @@ impl GrubFile {
                 continue;
             }
 
-            let keyval = KeyValue::new(idx, line);
+            let keyval = KeyValue::new(idx, line)?;
             keyvals.insert(keyval.key.clone(), keyval.clone());
             lines.push(GrubLine::KeyValue(keyval));
         }
 
-        Self { lines, keyvals }
+        Ok(Self { lines, keyvals })
     }
 
-    pub fn from_file<P: AsRef<Path>>(path: P) -> Self {
-        let file = read_to_string(path).unwrap();
+    pub fn from_file<P: AsRef<Path>>(path: P) -> DResult<Self> {
+        let file = read_to_string(path.as_ref())
+            .ctx(dctx!(), format!("Error reading {:?}", path.as_ref()))?;
         Self::new(&file)
     }
 

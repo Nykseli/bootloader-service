@@ -1,25 +1,33 @@
 use clap::Parser;
 use std::future::pending;
-use zbus::Result;
 
 mod config;
 mod db;
 mod dbus;
+mod errors;
 mod events;
 mod grub2;
 use crate::{
-    config::ConfigArgs, db::Database, dbus::connection::create_connection, events::listen_files,
+    config::ConfigArgs,
+    db::Database,
+    dbus::connection::create_connection,
+    errors::{DRes, DResult},
+    events::listen_files,
 };
 
 #[tokio::main]
-async fn main() -> Result<()> {
+async fn main() -> DResult<()> {
     let args = ConfigArgs::parse();
 
-    let db = Database::new().await;
-    db.initialize().await;
+    let db = Database::new().await?;
+    db.initialize().await?;
 
-    let connection = create_connection(&args, &db).await?;
-    listen_files(&connection).await?;
+    let connection = create_connection(&args, &db)
+        .await
+        .ctx(dctx!(), "Failed to create Zbus connection")?;
+    listen_files(&connection)
+        .await
+        .ctx(dctx!(), "Failed to listen file events")?;
     pending::<()>().await;
     Ok(())
 }

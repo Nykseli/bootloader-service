@@ -3,6 +3,8 @@ use sqlx::{sqlite::SqlitePoolOptions, Error, Pool, Sqlite};
 use crate::{
     config::{DATABASE_PATH, GRUB_FILE_PATH},
     db::grub2::Grub2Snapshot,
+    dctx,
+    errors::{DRes, DResult},
     grub2::GrubFile,
 };
 
@@ -14,19 +16,22 @@ pub struct Database {
 }
 
 impl Database {
-    pub async fn new() -> Self {
+    pub async fn new() -> DResult<Self> {
         // should this failure be fatal or should the snapshot features
         // just be disabled?
         let pool = SqlitePoolOptions::new()
             .max_connections(10)
             .connect(DATABASE_PATH)
             .await
-            .unwrap();
+            .ctx(
+                dctx!(),
+                format!("Cannot initialize SQLite database in path: {DATABASE_PATH}"),
+            )?;
 
-        Self { pool }
+        Ok(Self { pool })
     }
 
-    pub async fn initialize(&self) {
+    pub async fn initialize(&self) -> DResult<()> {
         let grub_table = sqlx::query!(
             "SELECT name FROM sqlite_master WHERE type='table' AND name='grub2_snapshot'"
         )
@@ -37,16 +42,17 @@ impl Database {
             sqlx::query(include_str!("../../db/grub2.sql"))
                 .execute(&self.pool)
                 .await
-                .unwrap();
+                .ctx(dctx!(), "Cannot initialize grub2_snapshots")?;
 
             // TODO: get selected kernel from somewhere
-            let grub = GrubFile::from_file(GRUB_FILE_PATH);
-            self.save_grub2(&grub).await;
+            let grub = GrubFile::from_file(GRUB_FILE_PATH)?;
+            self.save_grub2(&grub).await?;
         }
+
+        Ok(())
     }
 
-    pub async fn save_grub2(&self, grub: &GrubFile) {
-        // TODO: proper error handling
+    pub async fn save_grub2(&self, grub: &GrubFile) -> DResult<()> {
         // TODO: save selected kernel as well
         let grub_file = grub.as_string();
 
@@ -56,19 +62,20 @@ impl Database {
         )
         .execute(&self.pool)
         .await
-        .unwrap();
+        .ctx(dctx!(), "Cannot insert new entry to grub2_snapshot table")?;
+
+        Ok(())
     }
 
-    pub async fn latest_grub2(&self) -> Grub2Snapshot {
-        // select id from grub2_snapshot order by id DESC LIMIT 1;
+    pub async fn latest_grub2(&self) -> DResult<Grub2Snapshot> {
         let snapshot = sqlx::query_as!(
             Grub2Snapshot,
             "SELECT * FROM grub2_snapshot ORDER BY id DESC LIMIT 1",
         )
         .fetch_one(&self.pool)
         .await
-        .unwrap();
+        .ctx(dctx!(), "Cannot fetch snapshot from grub2_snapshot table")?;
 
-        snapshot
+        Ok(snapshot)
     }
 }

@@ -25,8 +25,8 @@ struct ConfigData {
 #[interface(name = "org.opensuse.bootloader.Config")]
 impl BootloaderConfig {
     async fn get_config(&self) -> String {
-        let grub = GrubFile::from_file(GRUB_FILE_PATH);
-        let latest = self.db.latest_grub2().await;
+        let grub = GrubFile::from_file(GRUB_FILE_PATH).unwrap();
+        let latest = self.db.latest_grub2().await.unwrap();
         let diff = TextDiff::from_lines(&latest.grub_config, &grub.as_string())
             .unified_diff()
             .to_string();
@@ -80,7 +80,7 @@ impl BootloaderConfig {
         );
 
         // if everything is okay, save the snapshot to a database
-        self.db.save_grub2(&grub_file).await;
+        self.db.save_grub2(&grub_file).await.unwrap();
 
         "ok".to_string()
     }
