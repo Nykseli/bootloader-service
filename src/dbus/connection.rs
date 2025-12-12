@@ -12,6 +12,18 @@ impl BootKitInfo {
     }
 }
 
+pub struct BootKitSnapshots {
+    handler: DbusHandler,
+}
+
+#[interface(name = "org.opensuse.bootkit.Snapshot")]
+impl BootKitSnapshots {
+    async fn get_snapshots(&self) -> String {
+        log::debug!("Calling org.opensuse.bootkit.Snapshot GetSnapshots");
+        self.handler.get_snapshots().await
+    }
+}
+
 pub struct BootKitConfig {
     handler: DbusHandler,
 }
@@ -50,6 +62,9 @@ pub async fn create_connection(args: &ConfigArgs, db: &Database) -> Result<Conne
     let config = BootKitConfig {
         handler: handler.clone(),
     };
+    let snapshots = BootKitSnapshots {
+        handler: handler.clone(),
+    };
     let bootentry = BootEntry { handler };
 
     let (connection, contype) = if args.session {
@@ -63,6 +78,7 @@ pub async fn create_connection(args: &ConfigArgs, db: &Database) -> Result<Conne
         .serve_at("/org/opensuse/bootkit", BootKitInfo {})?
         .serve_at("/org/opensuse/bootkit", config)?
         .serve_at("/org/opensuse/bootkit", bootentry)?
+        .serve_at("/org/opensuse/bootkit", snapshots)?
         .build()
         .await?;
 

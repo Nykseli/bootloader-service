@@ -8,7 +8,7 @@ use crate::{
     grub2::{GrubBootEntries, GrubFile},
 };
 
-mod grub2;
+pub mod grub2;
 
 #[derive(Clone)]
 pub struct Database {
@@ -61,7 +61,6 @@ impl Database {
         Ok(())
     }
 
-    // pub async fn save_grub2(&self, grub: &GrubFile, selected_kernel: Option<&str>) -> DResult<()> {
     pub async fn save_grub2<K: Into<String>>(
         &self,
         grub: &GrubFile,
@@ -93,5 +92,17 @@ impl Database {
         .ctx(dctx!(), "Cannot fetch snapshot from grub2_snapshot table")?;
 
         Ok(snapshot)
+    }
+
+    pub async fn grub2_snapshots(&self) -> DResult<Vec<Grub2Snapshot>> {
+        let snapshots = sqlx::query_as!(
+            Grub2Snapshot,
+            "SELECT * FROM grub2_snapshot ORDER BY id DESC",
+        )
+        .fetch_all(&self.pool)
+        .await
+        .ctx(dctx!(), "Cannot fetch snapshot from grub2_snapshot table")?;
+
+        Ok(snapshots)
     }
 }

@@ -1,6 +1,7 @@
 use chrono::NaiveDateTime;
+use serde::Serialize;
 
-#[derive(Debug)]
+#[derive(Debug, Serialize)]
 #[allow(dead_code)]
 pub struct Grub2Snapshot {
     /// Auto incrementing snapshot id

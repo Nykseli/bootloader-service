@@ -6,7 +6,7 @@ use similar::TextDiff;
 
 use crate::{
     config::GRUB_FILE_PATH,
-    db::Database,
+    db::{grub2::Grub2Snapshot, Database},
     dctx,
     errors::{DError, DErrorType, DRes, DResult},
     grub2::{GrubBootEntries, GrubFile, GrubLine},
@@ -52,6 +52,19 @@ struct ConfigData {
 struct BootEntryData {
     entries: Value,
     selected_kernel: Value,
+}
+
+#[derive(Debug, Serialize)]
+struct Grub2SnapshotData {
+    /// snapshot in the database
+    snapshot: Grub2Snapshot,
+    /// diff against the current config
+    diff: Option<String>,
+}
+
+#[derive(Debug, Serialize)]
+struct SnapshotData {
+    snapshots: Vec<Grub2SnapshotData>,
 }
 
 #[derive(Clone)]
@@ -205,6 +218,37 @@ impl DbusHandler {
     /// Get grub2 boot entries that can be safely sent via dbus
     pub async fn get_grub2_boot_entries(&self) -> String {
         let data: DbusResponse = self._get_grub2_boot_entries().await.into();
+        data.as_string()
+    }
+
+    /// Get snapshots that can be safely sent via dbus
+    async fn _get_snapshots(&self) -> DResult<SnapshotData> {
+        let db_snapshots = self.db.grub2_snapshots().await?;
+        let grub = GrubFile::from_file(GRUB_FILE_PATH).ctx(dctx!(), "Failed to read grub file")?;
+        let current = grub.as_string();
+        let snapshots: Vec<Grub2SnapshotData> = db_snapshots
+            .into_iter()
+            .map(|snapshot| {
+                let diff = TextDiff::from_lines(&current, &snapshot.grub_config)
+                    .unified_diff()
+                    .to_string();
+
+                let diff = if diff.trim().is_empty() {
+                    None
+                } else {
+                    Some(diff)
+                };
+
+                Grub2SnapshotData { snapshot, diff }
+            })
+            .collect();
+
+        Ok(SnapshotData { snapshots })
+    }
+
+    /// Get snapshots that can be safely sent via dbus
+    pub async fn get_snapshots(&self) -> String {
+        let data: DbusResponse = self._get_snapshots().await.into();
         data.as_string()
     }
 }
