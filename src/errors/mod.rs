@@ -20,6 +20,8 @@ impl std::fmt::Display for DCtx {
 #[derive(Debug)]
 #[allow(dead_code)]
 pub enum DErrorType {
+    /// Generic error when nothing else is applicable
+    Error(String),
     GrubParse(String),
     Io(String, std::io::Error),
     Sqlx(String, sqlx::Error),
@@ -30,6 +32,7 @@ pub enum DErrorType {
 impl DErrorType {
     pub fn as_string(&self) -> String {
         match self {
+            DErrorType::Error(msg) => format!("Error: {msg}"),
             DErrorType::GrubParse(msg) => {
                 format!("Internal Parse: Failed to parse grub config: {msg}")
             }
@@ -58,7 +61,7 @@ pub struct DError {
 }
 
 impl DError {
-    fn new(ctx: DCtx, error: DErrorType) -> Self {
+    pub fn new(ctx: DCtx, error: DErrorType) -> Self {
         log::debug!("Error at {ctx}: {error}");
         Self {
             ctx,

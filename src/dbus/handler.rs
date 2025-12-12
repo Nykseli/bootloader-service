@@ -8,7 +8,7 @@ use crate::{
     config::GRUB_FILE_PATH,
     db::Database,
     dctx,
-    errors::{DRes, DResult},
+    errors::{DError, DErrorType, DRes, DResult},
     grub2::{GrubBootEntries, GrubFile, GrubLine},
 };
 
@@ -45,6 +45,7 @@ struct ConfigData {
     value_map: Value,
     value_list: Value,
     config_diff: Option<Value>,
+    selected_kernel: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -65,11 +66,13 @@ impl DbusHandler {
 
     async fn _get_grub2_config(&self) -> DResult<ConfigData> {
         let grub = GrubFile::from_file(GRUB_FILE_PATH)?;
+        let kernel_entries = GrubBootEntries::new()?;
         let latest = self.db.latest_grub2().await?;
         let diff = TextDiff::from_lines(&latest.grub_config, &grub.as_string())
             .unified_diff()
             .to_string();
 
+        // TODO: add the potential difference in kernel entries to config_diff as well
         let config_diff = if diff.is_empty() {
             None
         } else {
@@ -85,6 +88,7 @@ impl DbusHandler {
             value_list,
             value_map,
             config_diff,
+            selected_kernel: kernel_entries.selected().map(str::to_string),
         })
     }
 
@@ -99,15 +103,38 @@ impl DbusHandler {
             .ctx(dctx!(), "Malformed JSON data received from the client")?;
         let value_list: Vec<GrubLine> = serde_json::from_value(config.value_list)
             .ctx(dctx!(), "Cannot turn json into GrubLines")?;
-        let grub_file = GrubFile::from_lines(&value_list);
+
+        let kernel_entries = GrubBootEntries::new()?;
+        let mut grub_file = GrubFile::from_lines(&value_list);
+
+        if let Some(kernel) = &config.selected_kernel {
+            if !kernel_entries.entries().contains(kernel) {
+                return Err(DError::new(
+                    dctx!(),
+                    DErrorType::Error(format!(
+                        "Kernel entry '{kernel}' is not found from grub configs"
+                    )),
+                ));
+            }
+
+            // make sure GRUB_DEFAULT is set to saved as it's required by grub
+            grub_file.set_key_value("GRUB_DEFAULT", "saved");
+        }
+
         let file = grub_file.as_string();
 
         // TODO: start a background thread that executes the grub config
         //       and return an ID that the client can use to poll information
 
         // WARN: this triggers FileChanged signal
-        let mut grub = File::create(GRUB_FILE_PATH).unwrap();
-        write!(grub, "{}", file).unwrap();
+        let mut grub = File::create(GRUB_FILE_PATH).ctx(
+            dctx!(),
+            format!("Failed to create grub config in path '{GRUB_FILE_PATH}'"),
+        )?;
+        write!(grub, "{}", file).ctx(
+            dctx!(),
+            format!("Failed override grub config in path '{GRUB_FILE_PATH}'"),
+        )?;
         log::debug!("Grub2 config was written to {GRUB_FILE_PATH}");
 
         log::debug!("Calling grub2-mkconfig -o /boot/grub2/grub.cfg");
@@ -127,8 +154,31 @@ impl DbusHandler {
         );
 
         log::debug!("Calling grub2-mkconfig -o /boot/grub2/grub.cfg done");
+
+        if let Some(kernel) = &config.selected_kernel {
+            log::debug!("Calling grub2-set-default {kernel}");
+
+            let set_default = Command::new("grub2-set-default")
+                .arg(kernel)
+                .output()
+                .ctx(dctx!(), "Failed to read output from grub2-set-default")?;
+
+            log::debug!(
+                "grub2-set-default stdout: {}",
+                String::from_utf8_lossy(&set_default.stdout)
+            );
+            log::debug!(
+                "grub2-mkconfig stderr: {}",
+                String::from_utf8_lossy(&set_default.stderr)
+            );
+
+            log::debug!("Calling grub2-set-default {kernel}, done");
+        }
+
         // if everything is okay, save the snapshot to a database
-        self.db.save_grub2(&grub_file).await?;
+        self.db
+            .save_grub2(&grub_file, config.selected_kernel)
+            .await?;
 
         Ok("ok".into())
     }

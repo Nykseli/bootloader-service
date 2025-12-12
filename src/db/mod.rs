@@ -5,7 +5,7 @@ use crate::{
     db::grub2::Grub2Snapshot,
     dctx,
     errors::{DRes, DResult},
-    grub2::GrubFile,
+    grub2::{GrubBootEntries, GrubFile},
 };
 
 mod grub2;
@@ -46,22 +46,34 @@ impl Database {
                 .ctx(dctx!(), "Cannot initialize grub2_snapshots")?;
 
             log::debug!("Setting first entry to grub2_snapshots");
-            // TODO: get selected kernel from somewhere
+
             let grub = GrubFile::from_file(GRUB_FILE_PATH)?;
-            self.save_grub2(&grub).await?;
+            if cfg!(feature = "dev") {
+                log::debug!("Setting initial snapshot without selected kernel");
+                self.save_grub2(&grub, None::<&str>).await?;
+            } else {
+                let entry = GrubBootEntries::new()?;
+                self.save_grub2(&grub, entry.selected()).await?;
+            }
         }
 
         log::info!("Initialised database at {DATABASE_PATH}");
         Ok(())
     }
 
-    pub async fn save_grub2(&self, grub: &GrubFile) -> DResult<()> {
-        // TODO: save selected kernel as well
+    // pub async fn save_grub2(&self, grub: &GrubFile, selected_kernel: Option<&str>) -> DResult<()> {
+    pub async fn save_grub2<K: Into<String>>(
+        &self,
+        grub: &GrubFile,
+        selected_kernel: Option<K>,
+    ) -> DResult<()> {
+        let selected_kernel: Option<String> = selected_kernel.map(K::into);
         let grub_file = grub.as_string();
 
         sqlx::query!(
-            "INSERT INTO grub2_snapshot (grub_config) VALUES (?)",
-            grub_file
+            "INSERT INTO grub2_snapshot (grub_config, selected_kernel) VALUES (?, ?)",
+            grub_file,
+            selected_kernel,
         )
         .execute(&self.pool)
         .await

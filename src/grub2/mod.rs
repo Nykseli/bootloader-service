@@ -31,6 +31,16 @@ impl KeyValue {
         Ok(kv)
     }
 
+    fn from_key_val<KV: Into<String>>(line: usize, key: KV, value: KV) -> Self {
+        Self {
+            line,
+            original: String::new(),
+            changed: true,
+            key: key.into(),
+            value: value.into(),
+        }
+    }
+
     fn parse(&mut self) -> DResult<()> {
         // TODO: save the type of quotes so they can be returned to orignal
         let trimmed = self.original.trim();
@@ -46,6 +56,14 @@ impl KeyValue {
         self.value = split.1.replace('\'', "").replace('"', "").into();
 
         Ok(())
+    }
+
+    fn update<V: Into<String>>(&mut self, value: V) {
+        let new_value = value.into();
+        if self.value != new_value {
+            self.changed = true;
+            self.value = new_value;
+        }
     }
 }
 
@@ -120,6 +138,21 @@ impl GrubFile {
         }
 
         Ok(Self { lines, keyvals })
+    }
+
+    pub fn set_key_value(&mut self, key: &str, value: &str) {
+        if let Some(keyval) = self.keyvals.get_mut(key) {
+            // If keyvalue exists, update it
+            keyval.update(value);
+            if let GrubLine::KeyValue(keyval) = &mut self.lines[keyval.line] {
+                keyval.update(value);
+            }
+        } else {
+            // else add a new value
+            let keyval = KeyValue::from_key_val(self.lines.len(), key, value);
+            self.keyvals.insert(keyval.key.clone(), keyval.clone());
+            self.lines.push(GrubLine::KeyValue(keyval));
+        }
     }
 
     pub fn from_file<P: AsRef<Path>>(path: P) -> DResult<Self> {
@@ -230,7 +263,7 @@ impl GrubBootEntries {
         &self.entries
     }
 
-    pub fn selected(&self) -> Option<&String> {
-        self.selected.as_ref()
+    pub fn selected(&self) -> Option<&str> {
+        self.selected.as_deref()
     }
 }
