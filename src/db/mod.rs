@@ -2,13 +2,14 @@ use sqlx::{sqlite::SqlitePoolOptions, Error, Pool, Sqlite};
 
 use crate::{
     config::{DATABASE_PATH, GRUB_FILE_PATH},
-    db::grub2::Grub2Snapshot,
+    db::{grub2::Grub2Snapshot, selected_snapshot::SelectedSnapshot},
     dctx,
     errors::{DRes, DResult},
     grub2::{GrubBootEntries, GrubFile},
 };
 
 pub mod grub2;
+pub mod selected_snapshot;
 
 #[derive(Clone)]
 pub struct Database {
@@ -55,6 +56,20 @@ impl Database {
                 let entry = GrubBootEntries::new()?;
                 self.save_grub2(&grub, entry.selected()).await?;
             }
+        }
+
+        let grub_table = sqlx::query!(
+            "SELECT name FROM sqlite_master WHERE type='table' AND name='selected_snapshot'"
+        )
+        .fetch_one(&self.pool)
+        .await;
+
+        if let Err(Error::RowNotFound) = grub_table {
+            log::debug!("selected_snapshot table not found from database, creating it");
+            sqlx::query(include_str!("../../db/selected_snapshot.sql"))
+                .execute(&self.pool)
+                .await
+                .ctx(dctx!(), "Cannot initialize selected_snapshots table")?;
         }
 
         log::info!("Initialised database at {DATABASE_PATH}");
@@ -104,5 +119,14 @@ impl Database {
         .ctx(dctx!(), "Cannot fetch snapshot from grub2_snapshot table")?;
 
         Ok(snapshots)
+    }
+
+    pub async fn selected_snapshot(&self) -> DResult<SelectedSnapshot> {
+        let snapshot = sqlx::query_as!(SelectedSnapshot, "SELECT * FROM selected_snapshot",)
+            .fetch_one(&self.pool)
+            .await
+            .ctx(dctx!(), "Cannot fetch snapshot from grub2_snapshot table")?;
+
+        Ok(snapshot)
     }
 }
