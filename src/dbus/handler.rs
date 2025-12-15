@@ -6,7 +6,7 @@ use similar::TextDiff;
 
 use crate::{
     config::GRUB_FILE_PATH,
-    db::{grub2::Grub2Snapshot, Database},
+    db::{grub2::Grub2Snapshot, selected_snapshot::SelectedSnapshot, Database},
     dctx,
     errors::{DError, DErrorType, DRes, DResult},
     grub2::{GrubBootEntries, GrubFile, GrubLine},
@@ -65,6 +65,7 @@ struct Grub2SnapshotData {
 #[derive(Debug, Serialize)]
 struct SnapshotData {
     snapshots: Vec<Grub2SnapshotData>,
+    selected: SelectedSnapshot,
 }
 
 #[derive(Clone)]
@@ -224,6 +225,7 @@ impl DbusHandler {
     /// Get snapshots that can be safely sent via dbus
     async fn _get_snapshots(&self) -> DResult<SnapshotData> {
         let db_snapshots = self.db.grub2_snapshots().await?;
+        let selected = self.db.selected_snapshot().await?;
         let grub = GrubFile::from_file(GRUB_FILE_PATH).ctx(dctx!(), "Failed to read grub file")?;
         let current = grub.as_string();
         let snapshots: Vec<Grub2SnapshotData> = db_snapshots
@@ -243,7 +245,10 @@ impl DbusHandler {
             })
             .collect();
 
-        Ok(SnapshotData { snapshots })
+        Ok(SnapshotData {
+            snapshots,
+            selected,
+        })
     }
 
     /// Get snapshots that can be safely sent via dbus
