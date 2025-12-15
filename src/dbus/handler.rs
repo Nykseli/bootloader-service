@@ -212,6 +212,8 @@ impl DbusHandler {
         self.db
             .save_grub2(&grub_file, config.selected_kernel)
             .await?;
+        // latest snapshot should be null so it's assumed that latest snapshot is selected
+        self.db.set_selected_snapshot(None).await?;
 
         Ok("ok".into())
     }
