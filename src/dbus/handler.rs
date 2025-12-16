@@ -167,8 +167,14 @@ impl DbusHandler {
     async fn _get_grub2_config(&self) -> DResult<ConfigData> {
         let grub = GrubFile::from_file(GRUB_FILE_PATH)?;
         let kernel_entries = GrubBootEntries::new()?;
-        let latest = self.db.latest_grub2().await?;
-        let diff = TextDiff::from_lines(&latest.grub_config, &grub.as_string())
+        let selected = self.db.selected_snapshot().await?;
+        let selected_grub = if let Some(id) = selected.grub2_snapshot_id {
+            self.db.grub2_snapshot(id).await?
+        } else {
+            self.db.latest_grub2().await?
+        };
+
+        let diff = TextDiff::from_lines(&selected_grub.grub_config, &grub.as_string())
             .unified_diff()
             .to_string();
 
