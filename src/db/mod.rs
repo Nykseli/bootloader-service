@@ -1,3 +1,5 @@
+use std::{fs::File, path::Path};
+
 use sqlx::{sqlite::SqlitePoolOptions, Error, Pool, Sqlite};
 
 use crate::{
@@ -18,6 +20,14 @@ pub struct Database {
 
 impl Database {
     pub async fn new() -> DResult<Self> {
+        if !Path::new(DATABASE_PATH).exists() {
+            log::debug!("Database file in was not found. Creating it in path {DATABASE_PATH}");
+            File::create(DATABASE_PATH).ctx(
+                dctx!(),
+                format!("Cannot create database in path: {DATABASE_PATH}"),
+            )?;
+        }
+
         // should this failure be fatal or should the snapshot features
         // just be disabled?
         let pool = SqlitePoolOptions::new()
