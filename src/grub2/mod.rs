@@ -123,7 +123,10 @@ impl GrubFile {
         let mut lines = Vec::new();
         let mut keyvals = HashMap::new();
 
-        for (idx, line) in file.lines().enumerate() {
+        // use split instead of lines to save the trailing empty new line
+        // this doesn't handle \r\n but this is very unlikely to run on
+        // windows anyways
+        for (idx, line) in file.split('\n').enumerate() {
             let trimmed = line.trim();
             if trimmed.is_empty() || trimmed.starts_with('#') {
                 lines.push(GrubLine::String {
