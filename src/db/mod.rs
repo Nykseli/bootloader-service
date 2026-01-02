@@ -55,9 +55,15 @@ impl Database {
                 .execute(&self.pool)
                 .await
                 .ctx(dctx!(), "Cannot initialize grub2_snapshots")?;
+        }
 
-            log::debug!("Setting first entry to grub2_snapshots");
+        let snapshot_count = sqlx::query!("SELECT COUNT(*) as count FROM grub2_snapshot")
+            .fetch_one(&self.pool)
+            .await
+            .ctx(dctx!(), "Cannot get count from grub2_snapshot")?;
 
+        if snapshot_count.count == 0 {
+            log::debug!("grub2_snapshot table is empty. Setting first entry to grub2_snapshots");
             let grub = GrubFile::from_file(GRUB_FILE_PATH)?;
             if cfg!(feature = "dev") {
                 log::debug!("Setting initial snapshot without selected kernel");
