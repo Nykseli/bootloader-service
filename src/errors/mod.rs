@@ -62,7 +62,6 @@ pub struct DError {
 
 impl DError {
     pub fn new(ctx: DCtx, error: DErrorType) -> Self {
-        log::error!("Error at {ctx}: {error}");
         Self {
             ctx,
             error,
@@ -76,7 +75,6 @@ impl DError {
 
     fn with_trace<M: Into<String>>(mut self, ctx: DCtx, message: M) -> Self {
         let message = message.into();
-        log::trace!("    trace [{}] {ctx}: {message}", self.trace.len() + 1);
         self.trace.push((message, ctx));
         self
     }
@@ -87,6 +85,17 @@ impl DError {
 
     pub fn error(&self) -> &DErrorType {
         &self.error
+    }
+}
+
+/// We know that DError propagation stops when it's dropped so it's the perfect
+/// opportunity to log it
+impl Drop for DError {
+    fn drop(&mut self) {
+        log::error!("Error at {}: {}", self.ctx, self.error());
+        for (idx, (message, ctx)) in self.trace.iter().enumerate() {
+            log::trace!("    trace [{}] {ctx}: {message}", idx + 1);
+        }
     }
 }
 
